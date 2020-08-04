@@ -18,14 +18,14 @@ dt = 0.01
 T = 1000
 iterations = int(T//dt)
 
-N = 1000                                                         # particles number
+N = 1                                                         # particles number
 
 R = 3*10**(-7)                                                  # particles radius
 eta = 3*10**(-17)                                               # fluid viscosity
 k_B = constants.Boltzmann                                       # Boltzmann constant
-temp = 100.                                                      # absolute temperature
+temp = 10.                                                      # absolute temperature
 
-l = 80                                                         # arena side
+l = 5                                                         # arena side
 A = l**2                                                        # arena area
 rho = N/A                                                       # particles density
 
@@ -47,11 +47,11 @@ v_0 = 0.01                                                      # self-propulsio
 a = 1.                                                          # force parameter
 k = 1.                                                          # force parameter
 # Pe_r = l_p/a                                                    # rotational Péclet number (in Paper 2, D_r is determined for a given Pe_r with fixed a and v_0)
-Pe_r = 50.
+Pe_r = 150.
 D_r = v_0/(Pe_r*a)
 
 
-x = l/1*np.random.rand(iterations, N, 2) - l/2                    # 2D position (x, y)
+x = l*np.random.rand(iterations, N, 2) - l/2                    # 2D position (x, y)
 theta = 2*constants.pi*np.random.rand(iterations, N)            # angle
 F = np.zeros((iterations, N, 2))                                # soft repulsive forces
 r = np.zeros((iterations, N, 2))                                # unit vector for soft repulsive forces
@@ -116,7 +116,7 @@ def animate(i):
 
     particles.set_data([x[i,:,0]], [x[i,:,1]])
     # print([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:,0])])
-    # particles_orientation.set_data([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:])], [x[i,:,1], x[i,:,1]+length_orientation*np.sin(theta[i,:])])
+    particles_orientation.set_data([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:])], [x[i,:,1], x[i,:,1]+length_orientation*np.sin(theta[i,:])])
 
     return particles, particles_orientation, time_text
 
