@@ -7,12 +7,14 @@
 # interactions in controlling the emergent behavior of active matter"
 # https://www.sciencedirect.com/science/article/abs/pii/S1359029416300024 (Paper 2)
 
-import numpy as np
+# import numpy as np
+import torch
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import scipy
 from scipy import constants
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 dt = 0.01
 T = 1000
@@ -51,22 +53,22 @@ Pe_r = 50.
 D_r = v_0/(Pe_r*a)
 
 
-x = l/1*np.random.rand(iterations, N, 2) - l/2                    # 2D position (x, y)
-theta = 2*constants.pi*np.random.rand(iterations, N)            # angle
-F = np.zeros((iterations, N, 2))                                # soft repulsive forces
-r = np.zeros((iterations, N, 2))                                # unit vector for soft repulsive forces
-a_particles = a*np.ones((N, 1))                                 # force parameter vector
+x = l/1*torch.rand(iterations, N, 2).to(DEVICE) - l/2                    # 2D position (x, y)
+theta = 2*constants.pi*torch.rand(iterations, N).to(DEVICE)            # angle
+F = torch.zeros((iterations, N, 2)).to(DEVICE)                                # soft repulsive forces
+r = torch.zeros((iterations, N, 2)).to(DEVICE)                                # unit vector for soft repulsive forces
+a_particles = a*torch.ones((N, 1)).to(DEVICE)                                 # force parameter vector
 
-W_x = np.sqrt(2 * D_t) * np.random.randn(iterations, N, 2)      # Wiener noise on translation
-W_theta = np.sqrt(2 * D_t) * np.random.randn(iterations, N)     # Wiener noise on rotation
+W_x = torch.sqrt(torch.tensor([2 * D_t])).to(DEVICE) * torch.randn(iterations, N, 2).to(DEVICE)      # Wiener noise on translation
+W_theta = torch.sqrt(torch.tensor([2 * D_t])).to(DEVICE) * torch.randn(iterations, N).to(DEVICE)     # Wiener noise on rotation
 
 
 length_orientation = .5
 
 fig = plt.figure(figsize=(15,10))
 ax1 = fig.add_subplot(111, aspect='equal', autoscale_on=True, xlim=(- l/2, l/2), ylim=(- l/2, l/2))
-ax1.set_xticks(np.arange(- l/2, l/2, l/10))
-ax1.set_yticks(np.arange(- l/2, l/2, l/10))
+ax1.set_xticks(torch.arange(- l/2, l/2, l/10))
+ax1.set_yticks(torch.arange(- l/2, l/2, l/10))
 ax1.grid()
 time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
 
@@ -85,23 +87,24 @@ def init():
 
 def animate(i):
     for j in range(N):
-        distance_ij = np.linalg.norm(x[i,j,:] - x[i,:,:], axis=1)
+        distance_ij = torch.norm(x[i,j,:] - x[i,:,:], dim=1)
         # distance_ij = scipy.spatial.distance.cdist(x[i,j,:], x[i,:,:])
         direction_ij = (x[i,j,:] - x[i,:,:]) / distance_ij[:, None]
         f_ij = k * (a_particles[j,0] + a_particles[:,0] - distance_ij)
         f_ij[f_ij < 0] = 0
 
-        F[i,j,:] = np.nansum(f_ij[:, None] * direction_ij, axis=0)
+        # F[i,j,:] = torch.nansum(f_ij[:, None] * direction_ij, axis=0)
+        F[i,j,:] = 0
 
 
 
 
     """perform animation step"""
-    dx = v_0 * np.cos(theta[i,:]) + F[i,:,0] + W_x[i,:,0]/np.sqrt(dt)
-    dy = v_0 * np.sin(theta[i,:]) + F[i,:,1] + W_x[i,:,1]/np.sqrt(dt)
-    dtheta = W_theta[i,:]/np.sqrt(dt)
-
-    x[i+1,:,:] = x[i,:,:] + dt * np.array([dx, dy]).T
+    dx = v_0 * torch.cos(theta[i,:]).to(DEVICE) + F[i,:,0] + W_x[i,:,0]/torch.tensor([dt]).to(DEVICE)
+    dy = v_0 * torch.sin(theta[i,:]).to(DEVICE) + F[i,:,1] + W_x[i,:,1]/torch.tensor([dt]).to(DEVICE)
+    dtheta = W_theta[i,:]/torch.sqrt(torch.tensor([dt])).to(DEVICE)
+    
+    x[i+1,:,:] = x[i,:,:] + dt * torch.transpose(torch.stack((dx, dy)), 0, 1).to(DEVICE)
     theta[i+1,:] = theta[i,:] + dt * dtheta
 
     # particles bouncing off the walls
@@ -114,7 +117,7 @@ def animate(i):
 
     time_text.set_text('iteration = %.2f' % i)
 
-    particles.set_data([x[i,:,0]], [x[i,:,1]])
+    particles.set_data([x[i,:,0].numpy()], [x[i,:,1].numpy()])
     # print([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:,0])])
     # particles_orientation.set_data([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:])], [x[i,:,1], x[i,:,1]+length_orientation*np.sin(theta[i,:])])
 
@@ -126,7 +129,7 @@ ani = animation.FuncAnimation(fig, animate, frames=iterations,
                               interval=1, blit=True, init_func=init)
 
 
-phi = np.pi * np.sum(a_particles**2) / A
+phi = constants.pi * torch.sum(a_particles**2).to(DEVICE) / A
 print(phi)
 print(D_r)
 plt.show()
