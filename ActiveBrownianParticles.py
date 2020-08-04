@@ -10,14 +10,18 @@
 # import numpy as np
 import torch
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+from matplotlib import animation, rc
 import scipy
 from scipy import constants
+from IPython.display import HTML
 
+
+# rc('animation', html='jshtml')
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = "cpu"
 
 dt = 0.01
-T = 1000
+T = 100
 iterations = int(T//dt)
 
 N = 1000                                                         # particles number
@@ -75,6 +79,7 @@ time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
 particles, = ax1.plot([], [], 'o', lw=2, label='Particle')
 particles_orientation, = ax1.plot([], [], '-', lw=2)
 
+# plt.close()
 
 def init():
     """initialize animation"""
@@ -118,7 +123,7 @@ def animate(i):
 
     time_text.set_text('iteration = %.2f' % i)
 
-    particles.set_data([x[i,:,0].numpy()], [x[i,:,1].numpy()])
+    particles.set_data([x[i,:,0].to("cpu").numpy()], [x[i,:,1].to("cpu").numpy()])
     # print([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:,0])])
     # particles_orientation.set_data([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:])], [x[i,:,1], x[i,:,1]+length_orientation*np.sin(theta[i,:])])
 
@@ -126,13 +131,17 @@ def animate(i):
 
 # plt.plot(x[:,:,0], x[:,:,1])
 
-ani = animation.FuncAnimation(fig, animate, frames=iterations,
+ani = animation.FuncAnimation(fig, animate, frames=iterations-1,
                               interval=1, blit=True, init_func=init)
 
+rc('animation', html='jshtml')
+ani    # or HTML(ani.to_jshtml())
+# HTML(ani.to_html5_video())
 
-phi = constants.pi * torch.sum(a_particles**2).to(DEVICE) / A
-print(phi)
-print(D_r)
+
+# phi = constants.pi * torch.sum(a_particles**2).to(DEVICE) / A
+# print(phi)
+# print(D_r)
 plt.show()
 
 
