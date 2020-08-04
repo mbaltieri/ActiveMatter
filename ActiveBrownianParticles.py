@@ -18,7 +18,6 @@ from IPython.display import HTML
 
 # rc('animation', html='jshtml')
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-DEVICE = "cpu"
 
 dt = 0.01
 T = 100
