@@ -93,8 +93,8 @@ def animate(i):
         f_ij = k * (a_particles[j,0] + a_particles[:,0] - distance_ij)
         f_ij[f_ij < 0] = 0
 
-        # F[i,j,:] = torch.nansum(f_ij[:, None] * direction_ij, axis=0)
-        F[i,j,:] = 0
+        F[i,j,:] = torch.sum(f_ij[~torch.isnan(f_ij), None] * direction_ij, axis=0).to(DEVICE)
+        # F[i,j,:] = 0
 
 
 
