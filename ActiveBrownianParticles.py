@@ -90,10 +90,11 @@ def animate(i):
         distance_ij = torch.norm(x[i,j,:] - x[i,:,:], dim=1)
         # distance_ij = scipy.spatial.distance.cdist(x[i,j,:], x[i,:,:])
         direction_ij = (x[i,j,:] - x[i,:,:]) / distance_ij[:, None]
+        direction_ij[torch.isnan(direction_ij)] = 0.                            # remove nan on distance from itself
         f_ij = k * (a_particles[j,0] + a_particles[:,0] - distance_ij)
         f_ij[f_ij < 0] = 0
 
-        F[i,j,:] = torch.sum(f_ij[~torch.isnan(f_ij), None] * direction_ij, axis=0).to(DEVICE)
+        F[i,j,:] = torch.sum(f_ij[:, None] * direction_ij, axis=0).to(DEVICE)
         # F[i,j,:] = 0
 
 
