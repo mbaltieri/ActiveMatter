@@ -7,12 +7,13 @@
 # interactions in controlling the emergent behavior of active matter"
 # https://www.sciencedirect.com/science/article/abs/pii/S1359029416300024 (Paper 2)
 
-import numpy as np
+# import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import scipy
 from scipy import constants
 from scipy.spatial.distance import pdist, squareform
+import torch
 import time
 from numba import jit
 # from numba import int32, float32, float64    # import the types
@@ -24,17 +25,20 @@ from numba import jit
 #     ('array2', float64[:]),          # an array field
 # ]
 
+# rc('animation', html='jshtml')
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(DEVICE)
 # @jitclass(spec)
 class ABPSimulation():
-    def __init__(self, dt=0.01, T=1000, l=50, translfric=6, rotatfric=8, mob=1., v_0=0.01, pecnum=11., packfrac=0.5):
-        self.dt = dt
+    def __init__(self, dt=0.01, T=1000, l=50, translfric=6, rotatfric=8, mob=1., v_0=0.01, pecnum=11., packfrac=0.5, temp=10.):
+        self.dt = torch.tensor(dt)
         self.T = T
         self.iterations = int(self.T//self.dt)
 
         self.R = 3*10**(-7)                                                  # particles radius
         self.eta = 3*10**(-17)                                               # fluid viscosity
         self.k_B = constants.Boltzmann                                       # Boltzmann constant
-        self.temp = 10.                                                      # absolute temperature
+        self.temp = temp                                                      # absolute temperature
 
         self.l = l                                                           # arena side
         self.A = self.l**2                                                   # arena area
@@ -65,42 +69,43 @@ class ABPSimulation():
         self.phi = packfrac
         self.N = int(self.A * self.phi / (constants.pi * self.a**2))
 
-        self.x = l*np.random.rand(self.iterations, self.N, 2) - self.l/2                    # 2D position (x, y)
-        self.theta = 2*constants.pi*np.random.rand(self.iterations, self.N)                 # angle
-        self.F = np.zeros((self.iterations, self.N, 2))                                     # soft repulsive forces
-        self.r = np.zeros((self.iterations, self.N, 2))                                     # unit vector for soft repulsive forces
-        self.a_particles = self.a*np.ones((self.N, 1))                                      # force parameter vector
+        self.x = l*torch.rand(self.iterations, self.N, 2).to(DEVICE) - self.l/2                    # 2D position (x, y)
+        self.theta = 2*constants.pi*torch.rand(self.iterations, self.N).to(DEVICE)                 # angle
+        self.F = torch.zeros((self.iterations, self.N, 2)).to(DEVICE)                                     # soft repulsive forces
+        self.r = torch.zeros((self.iterations, self.N, 2)).to(DEVICE)                                     # unit vector for soft repulsive forces
+        self.a_particles = self.a*torch.ones((self.N, 1)).to(DEVICE)                                      # force parameter vector
 
-        self.W_x = np.sqrt(2 * self.D_t) * np.random.randn(self.iterations, self.N, 2)      # Wiener noise on translation
-        self.W_theta = np.sqrt(2 * self.D_t) * np.random.randn(self.iterations, self.N)     # Wiener noise on rotation
+        self.W_x = torch.sqrt(2 * torch.tensor(self.D_t)) * torch.randn(self.iterations, self.N, 2).to(DEVICE)      # Wiener noise on translation
+        self.W_theta = torch.sqrt(2 * torch.tensor(self.D_t)) * torch.randn(self.iterations, self.N).to(DEVICE)     # Wiener noise on rotation
 
         self.length_orientation = .5
 
     # @jit(nopython=True)
     def step(self, i):
         # t0 = time.time()
-        # self.distance_ij = squareform(pdist(self.x[i,:,:], 'euclidean'))
-        # self.direction = self.x[i,:,None,:] - self.x[i,:,:]
-        # self.direction_ij = np.divide(self.direction, self.distance_ij[:, :, None], out=np.zeros_like(self.direction), where=self.distance_ij[:, :, None]!=0)
-        # self.f_ij = self.k * (self.a_particles[:,None,0] + self.a_particles[:,0] - self.distance_ij)
-        # self.f_ij[self.f_ij < 0] = 0
-        # self.F[i,:,:] = np.sum(self.f_ij[:,:, None] * self.direction_ij, axis=1)
+        self.distance_ij = torch.from_numpy(squareform(pdist(self.x[i,:,:].cpu(), 'euclidean'))).to(DEVICE)
+        self.direction = self.x[i,:,None,:] - self.x[i,:,:]
+        self.direction_ij = self.direction / self.distance_ij[:, :, None]
+        self.direction_ij[self.direction_ij != self.direction_ij] = 0                               # remove nan
+        self.f_ij = self.k * (self.a_particles[:,None,0] + self.a_particles[:,0] - self.distance_ij)
+        self.f_ij[self.f_ij < 0] = 0                                                                # no negative forces (see Paper 2)
+        self.F[i,:,:] = torch.sum(self.f_ij[:,:, None] * self.direction_ij, axis=1)
 
-        for j in range(self.N):
-            self.distance_ij = np.linalg.norm(self.x[i,j,:] - self.x[i,:,:], axis=1)
-            self.direction_ij = (self.x[i,j,:] - self.x[i,:,:]) / self.distance_ij[:, None]
-            self.f_ij = self.k * (self.a_particles[j,0] + self.a_particles[:,0] - self.distance_ij)
-            self.f_ij[self.f_ij < 0] = 0
+        # for j in range(self.N):
+        #     self.distance_ij = np.linalg.norm(self.x[i,j,:] - self.x[i,:,:], axis=1)
+        #     self.direction_ij = (self.x[i,j,:] - self.x[i,:,:]) / self.distance_ij[:, None]
+        #     self.f_ij = self.k * (self.a_particles[j,0] + self.a_particles[:,0] - self.distance_ij)
+        #     self.f_ij[self.f_ij < 0] = 0
 
-            self.F[i,j,:] = np.nansum(self.f_ij[:, None] * self.direction_ij, axis=0)
+        #     self.F[i,j,:] = np.nansum(self.f_ij[:, None] * self.direction_ij, axis=0)
 
 
         """perform animation step"""
-        self.dx = self.v_0 * np.cos(self.theta[i,:]) + self.F[i,:,0] + self.W_x[i,:,0]/np.sqrt(self.dt)
-        self.dy = self.v_0 * np.sin(self.theta[i,:]) + self.F[i,:,1] + self.W_x[i,:,1]/np.sqrt(self.dt)
-        self.dtheta = self.W_theta[i,:]/np.sqrt(self.dt)
+        self.dx = self.v_0 * torch.cos(self.theta[i,:]) + self.F[i,:,0] + self.W_x[i,:,0]/torch.sqrt(self.dt)
+        self.dy = self.v_0 * torch.sin(self.theta[i,:]) + self.F[i,:,1] + self.W_x[i,:,1]/torch.sqrt(self.dt)
+        self.dtheta = self.W_theta[i,:]/torch.sqrt(self.dt)
 
-        self.x[i+1,:,:] = self.x[i,:,:] + self.dt * np.array([self.dx, self.dy]).T
+        self.x[i+1,:,:] = self.x[i,:,:] + self.dt * torch.stack((self.dx, self.dy)).t()
         self.theta[i+1,:] = self.theta[i,:] + self.dt * self.dtheta
 
         # particles bouncing off the walls, not really working too well if thermal noise allows for "jumps"
@@ -133,23 +138,23 @@ class ABPSimulation():
         self.step(i)
         time_text.set_text('iteration = %.2f' % i)
 
-        particles.set_data([self.x[i,:,0]], [self.x[i,:,1]])
+        particles.set_data([self.x[i,:,0].cpu().detach().numpy()], [self.x[i,:,1].cpu().detach().numpy()])
         # print([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:,0])])
         # particles_orientation.set_data([x[i,:,0], x[i,:,0]+length_orientation*np.cos(theta[i,:])], [x[i,:,1], x[i,:,1]+length_orientation*np.sin(theta[i,:])])
 
         return particles, particles_orientation, time_text
 
 dt = 0.1
-T = 10
-length = 3
+T = 100
+length = 100
 Pn = 50
 sim = ABPSimulation(l=length, pecnum=Pn, dt=dt, T=T)
 
 # plotting 
 fig = plt.figure(figsize=(15,10))
 ax1 = fig.add_subplot(111, aspect='equal', autoscale_on=True, xlim=(- sim.l/2, sim.l/2), ylim=(- sim.l/2, sim.l/2))
-ax1.set_xticks(np.arange(- sim.l/2, sim.l/2, sim.l/10))
-ax1.set_yticks(np.arange(- sim.l/2, sim.l/2, sim.l/10))
+ax1.set_xticks(torch.arange(- sim.l/2, sim.l/2, sim.l/10))
+ax1.set_yticks(torch.arange(- sim.l/2, sim.l/2, sim.l/10))
 ax1.grid()
 time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
 plt.title("Péclet number, $Pe_r$: {}, packing fraction, $\phi$: {:.2f}, number of particles: {}".format(sim.Pe_r, sim.phi, sim.N))
