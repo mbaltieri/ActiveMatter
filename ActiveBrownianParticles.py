@@ -30,7 +30,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(DEVICE)
 # @jitclass(spec)
 class ABPSimulation():
-    def __init__(self, dt=0.01, T=1000, l=50, translfric=6, rotatfric=8, mob=1., v_0=0.01, pecnum=11., packfrac=0.5, temp=10.):
+    def __init__(self, dt=0.01, T=1000, l=50, translfric=6, rotatfric=8, mob=1., v_0=0.01, pecnum=11., packfrac=0.5, temp=10., coupling=1.):
         self.dt = torch.tensor(dt)
         self.T = T
         self.iterations = int(self.T//self.dt)
@@ -38,7 +38,7 @@ class ABPSimulation():
         self.R = 3*10**(-7)                                                  # particles radius
         self.eta = 3*10**(-17)                                               # fluid viscosity
         self.k_B = constants.Boltzmann                                       # Boltzmann constant
-        self.temp = temp                                                      # absolute temperature
+        self.temp = temp                                                     # absolute temperature
 
         self.l = l                                                           # arena side
         self.A = self.l**2                                                   # arena area
@@ -59,8 +59,8 @@ class ABPSimulation():
         # self.tau_r = 1/self.D_r                                              # persistence time
         self.v_0 = v_0                                                       # self-propulsion speed
         # self.l_p = self.v_0*self.tau_r                                       # persistence length
-        self.a = 1.                                                          # force parameter
-        self.k = 1.                                                          # force parameter
+        self.a = 1.                                                          # particle radius
+        self.k = coupling                                                    # force parameter (coupling)
         # self.Pe_r = self.l_p/self.a                                          # rotational Péclet number (in Paper 2, D_r is determined for a given Pe_r with fixed a and v_0)
         self.Pe_r = pecnum
         self.D_r = self.v_0/(self.Pe_r*self.a)
@@ -83,7 +83,8 @@ class ABPSimulation():
     # @jit(nopython=True)
     def step(self, i):
         # t0 = time.time()
-        self.distance_ij = torch.from_numpy(squareform(pdist(self.x[i,:,:].cpu(), 'euclidean'))).to(DEVICE)
+        # self.distance_ij = torch.from_numpy(squareform(pdist(self.x[i,:,:].cpu(), 'euclidean'))).to(DEVICE)
+        self.distance_ij = torch.cdist(self.x[i,:,:], self.x[i,:,:])
         self.direction = self.x[i,:,None,:] - self.x[i,:,:]
         self.direction_ij = self.direction / self.distance_ij[:, :, None]
         self.direction_ij[self.direction_ij != self.direction_ij] = 0                               # remove nan
@@ -144,39 +145,43 @@ class ABPSimulation():
 
         return particles, particles_orientation, time_text
 
-dt = 0.1
+dt = 1.
 T = 100
 length = 100
-Pn = 50
-sim = ABPSimulation(l=length, pecnum=Pn, dt=dt, T=T)
+Pn = 100
+packfrac = [0.1]
+temp = 5.
+coupling = 1.
 
-# plotting 
-fig = plt.figure(figsize=(15,10))
-ax1 = fig.add_subplot(111, aspect='equal', autoscale_on=True, xlim=(- sim.l/2, sim.l/2), ylim=(- sim.l/2, sim.l/2))
-ax1.set_xticks(torch.arange(- sim.l/2, sim.l/2, sim.l/10))
-ax1.set_yticks(torch.arange(- sim.l/2, sim.l/2, sim.l/10))
-ax1.grid()
-time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
-plt.title("Péclet number, $Pe_r$: {}, packing fraction, $\phi$: {:.2f}, number of particles: {}".format(sim.Pe_r, sim.phi, sim.N))
+for i in range(len(packfrac)):
+    sim = ABPSimulation(l=length, pecnum=Pn, dt=dt, T=T, packfrac=packfrac[i], temp=temp, coupling=coupling)
 
-particles, = ax1.plot([], [], 'o', ms=8, lw=2, label='Particle')
-particles_orientation, = ax1.plot([], [], '-', lw=2)
+    # plotting 
+    fig = plt.figure(figsize=(15,10))
+    ax1 = fig.add_subplot(111, aspect='equal', autoscale_on=True, xlim=(- sim.l/2, sim.l/2), ylim=(- sim.l/2, sim.l/2))
+    ax1.set_xticks(torch.arange(- sim.l/2, sim.l/2, sim.l/10))
+    ax1.set_yticks(torch.arange(- sim.l/2, sim.l/2, sim.l/10))
+    ax1.grid()
+    time_text = ax1.text(0.02, 0.95, '', transform=ax1.transAxes)
+    plt.title("Péclet number, $Pe_r$: {}, packing fraction, $\phi$: {:.2f}, number of particles: {}".format(sim.Pe_r, sim.phi, sim.N))
 
-
-# Set up formatting for the movie files
-Writer = animation.writers['ffmpeg']
-writer = Writer(fps=30, metadata=dict(artist='Me'), bitrate=1800)
-
-ani = animation.FuncAnimation(fig, sim.animate, frames=int(sim.iterations-1),
-                              interval=1, blit=True, init_func=sim.init)
+    particles, = ax1.plot([], [], 'o', ms=8, lw=2, label='Particle')
+    particles_orientation, = ax1.plot([], [], '-', lw=2)
 
 
-t0 = time.time()
-ani.save('lines.mp4', writer=writer)
-t1 = time.time()
-total = t1-t0
-print(total)
-
-# plt.show()
+    # Set up formatting for the movie files
+    Writer = animation.writers['ffmpeg']
+    writer = Writer(fps=30, metadata=dict(artist='Me'), bitrate=1800)
 
 
+    ani = animation.FuncAnimation(fig, sim.animate, frames=int(sim.iterations-1),
+                                    interval=1, blit=True, init_func=sim.init)
+
+    filename = 'Simulation' + str(i) + '.mp4'
+    t0 = time.time()
+    ani.save(filename, writer=writer)
+    t1 = time.time()
+    total = t1-t0
+    print('Simulation ', i, 'time: ', total)
+
+plt.show()
